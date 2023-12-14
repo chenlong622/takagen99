@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">TVBox99</string>
+    <string name="app_name">Taka99</string>
     <string name="app_home">首页</string>
-    <string name="app_source">https://jihulab.com/chenlong622/1/-/raw/main/long.json</string>
+    <string name="app_source">https://gitee.com/chenlong622/LIVE/raw/main/long.json</string>
 
     // Home Page //
     <string name="hm_ok">加载成功</string>
