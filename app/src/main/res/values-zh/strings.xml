@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Taka99</string>
+    <string name="app_name">黑盒</string>
     <string name="app_home">首页</string>
     <string name="app_source">https://gitee.com/chenlong622/LIVE/raw/main/long.json</string>
 
