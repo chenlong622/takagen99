@@ -1,6 +1,6 @@
 # windows thumbnail cache
 Thumbs.db
-
+# package-lock.json
 # Built application files
 *.apk
 *.aar
