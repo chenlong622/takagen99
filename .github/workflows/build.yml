@@ -1,0 +1,16 @@
+name: Build APK
+push:
+  branches:
+    - master  # 当推送到master分支时触发构建
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Set up JDK
+        uses: actions/setup-java@v2
+        with:
+          java-version: '11'  # 根据项目需求设置JDK版本
+      - name: Build with Gradle
+        run: ./gradlew assembleDebug  # 执行Gradle构建，生成Debug版本的APK文件
