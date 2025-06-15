@@ -14,14 +14,6 @@ env:
   ANDROID_SDK_VERSION: 33
 
 
-# 移除setup-node中的cache参数
-- uses: actions/setup-node@v4
-  with:
-    node-version: 18
-# 直接安装依赖（使用npm install而非npm ci）
-- name: Install dependencies
-  run: npm install
-
 jobs:
   # 代码质量检查
   lint:
