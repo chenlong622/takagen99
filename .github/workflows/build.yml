@@ -1,16 +1,185 @@
-name: Build APK
-push:
-  branches:
-    - master  # 当推送到master分支时触发构建
+# .github/workflows/build-deploy.yml
+name: Build and Deploy Application
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# 使用环境变量简化配置
+env:
+  APP_NAME: my-awesome-app
+  NODE_VERSION: 18
+  ANDROID_SDK_VERSION: 33
+
 jobs:
-  build:
+  # 代码质量检查
+  lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
-      - name: Set up JDK
-        uses: actions/setup-java@v2
+        uses: actions/checkout@v4
         with:
-          java-version: '11'  # 根据项目需求设置JDK版本
-      - name: Build with Gradle
-        run: ./gradlew assembleDebug  # 执行Gradle构建，生成Debug版本的APK文件
+          fetch-depth: 0  # 获取完整提交历史
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linters
+        run: |
+          npm run lint
+          npm run format:check
+
+  # 单元测试
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm test -- --coverage
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # 构建Android应用
+  build-android:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          sdk_version: ${{ env.ANDROID_SDK_VERSION }}
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@v4
+        with:
+          releaseDirectory: android/app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
+          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-android
+          path: android/app/build/outputs/apk/release/*.apk
+
+  # 构建iOS应用
+  build-ios:
+    runs-on: macos-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install CocoaPods
+        run: sudo gem install cocoapods
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd ios && pod install
+
+      - name: Build iOS App
+        uses: maxim-lobanov/setup-xcode@v4
+        with:
+          xcode-version: '14.3'
+          
+      - name: Build for App Store
+        run: |
+          cd ios
+          xcodebuild -workspace MyApp.xcworkspace \
+                     -scheme MyApp \
+                     -configuration Release \
+                     -archivePath build/MyApp.xcarchive \
+                     archive
+          xcodebuild -exportArchive \
+                     -archivePath build/MyApp.xcarchive \
+                     -exportOptionsPlist exportOptions.plist \
+                     -exportPath build/output
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-ios
+          path: ios/build/output/*.ipa
+
+  # 部署到测试环境
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [build-android, build-ios]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-android
+          path: dist/android
+
+      - name: Download iOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-ios
+          path: dist/ios
+
+      - name: Deploy to TestFlight (iOS)
+        uses: maierj/fastlane-action@v4
+        with:
+          lane: 'beta'
+          subdirectory: 'ios'
+        env:
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+
+      - name: Deploy to Google Play (Android)
+        uses: r0adkll/upload-google-play@v4
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+          packageName: com.example.myapp
+          releaseFile: dist/android/*.apk
+          track: internal
